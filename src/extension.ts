@@ -6,9 +6,17 @@ import * as vscode from 'vscode';
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 	function handleChange() {
-		console.log("Change in the text editor");
-		vscode.window.showInformationMessage('Change in the text editor');
-	}
+		const editor = vscode.window.activeTextEditor;
+
+		// check if there is no selection
+		if (editor !== undefined) {
+			if (editor.selection.isEmpty) {
+		    // the Position object gives you the line and character where the cursor is
+		    const position = editor.selection.active;
+		    console.log(position.line, position.character);
+	     	}
+	    }
+    }
 
 	vscode.workspace.onDidChangeTextDocument(handleChange);
 
