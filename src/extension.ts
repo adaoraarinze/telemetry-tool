@@ -14,7 +14,10 @@ export function activate(context: vscode.ExtensionContext) {
 			if (editor.selection.isEmpty) {
 		    // the Position object gives you the line and character where the cursor is
 		    const position = editor.selection.active;
-		    console.log(position.line + 1, position.character + 1);
+			const lineText = editor.document.lineAt(position.line).text;
+            const currentLine = lineText.substring(0, lineText.length);
+
+		    console.log(position.line + 1, position.character + 1, currentLine);
 	     	}
 	    }
 		}
