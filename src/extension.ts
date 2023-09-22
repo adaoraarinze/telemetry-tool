@@ -5,20 +5,20 @@ import * as vscode from 'vscode';
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	function handleChange() {
-		const editor = vscode.window.activeTextEditor;
+	vscode.workspace.onDidSaveTextDocument((document: vscode.TextDocument) => {
+		if (document.uri.scheme === "file") {
+			const editor = vscode.window.activeTextEditor;
 
 		// check if there is no selection
 		if (editor !== undefined) {
 			if (editor.selection.isEmpty) {
 		    // the Position object gives you the line and character where the cursor is
 		    const position = editor.selection.active;
-		    console.log(position.line, position.character);
+		    console.log(position.line + 1, position.character + 1);
 	     	}
 	    }
-    }
-
-	vscode.workspace.onDidChangeTextDocument(handleChange);
+		}
+	});
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
