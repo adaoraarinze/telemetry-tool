@@ -1,11 +1,12 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import axios from 'axios';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	vscode.workspace.onDidSaveTextDocument((document: vscode.TextDocument) => {
+	vscode.workspace.onDidSaveTextDocument( (document: vscode.TextDocument) => {
 		if (document.uri.scheme === "file") {
 			const editor = vscode.window.activeTextEditor;
 
@@ -16,8 +17,19 @@ export function activate(context: vscode.ExtensionContext) {
 		    const position = editor.selection.active;
 			const lineText = editor.document.lineAt(position.line).text;
             const currentLine = lineText.substring(0, lineText.length);
+			context.globalState.update("currentLine", currentLine);
+			context.globalState.update("position", position.line + 1);
+			async function doPostRequest() {
 
-		    console.log(position.line + 1, position.character + 1, currentLine);
+				let payload = { currentLine: currentLine, position: position.line + 1 };
+			
+				let res = await axios.post('http://localhost:3000/', payload);
+			
+				let data = res.data;
+				console.log(data);
+			}
+			doPostRequest();
+		    console.log(context.globalState.get("currentLine"), context.globalState.get("position"));
 	     	}
 	    }
 		}
