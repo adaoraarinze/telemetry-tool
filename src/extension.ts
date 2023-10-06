@@ -20,7 +20,6 @@ export function activate(context: vscode.ExtensionContext) {
 			context.globalState.update("currentLine", currentLine);
 			context.globalState.update("position", position.line + 1);
 			async function doPostRequest() {
-
 				let payload = { currentLine: currentLine, position: position.line + 1 };
 			
 				let res = await axios.post('http://localhost:3000/', payload);
@@ -29,6 +28,7 @@ export function activate(context: vscode.ExtensionContext) {
 				console.log(data);
 			}
 			doPostRequest();
+
 		    console.log(context.globalState.get("currentLine"), context.globalState.get("position"));
 	     	}
 	    }
