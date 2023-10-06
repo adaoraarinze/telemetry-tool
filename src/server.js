@@ -27,6 +27,7 @@ const dataSchema = new mongoose.Schema({
 });
   
 // Create a Mongoose Model based on the Schema
+// eslint-disable-next-line @typescript-eslint/naming-convention
 const Data = mongoose.model('Data', dataSchema);
   
 // API endpoint to receive and store data
