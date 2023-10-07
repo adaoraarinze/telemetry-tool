@@ -6,32 +6,31 @@ import axios from 'axios';
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	vscode.workspace.onDidSaveTextDocument( (document: vscode.TextDocument) => {
-		if (document.uri.scheme === "file") {
-			const editor = vscode.window.activeTextEditor;
+	let currentPosition = vscode.window.activeTextEditor?.selection.active;
+	vscode.workspace.onDidChangeTextDocument(event => {
+		const editor = vscode.window.activeTextEditor;
 
 		// check if there is no selection
-		if (editor !== undefined) {
-			if (editor.selection.isEmpty) {
-		    // the Position object gives you the line and character where the cursor is
-		    const position = editor.selection.active;
-			const lineText = editor.document.lineAt(position.line).text;
-            const currentLine = lineText.substring(0, lineText.length);
-			context.globalState.update("currentLine", currentLine);
-			context.globalState.update("position", position.line + 1);
-			async function doPostRequest() {
-				let payload = { currentLine: currentLine, position: position.line + 1 };
-			
-				let res = await axios.post('http://localhost:3000/', payload);
-			
-				let data = res.data;
-				console.log(data);
-			}
-			doPostRequest();
+		if (editor !== undefined && editor.selection.isEmpty) {
+			// get the document text
+			const firstLine = editor.document.lineAt(0);
+			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
+			const text = editor.document.getText(textRange);
+			// the Position object gives you the line and character where the cursor is
+			if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line) {
+				const position = editor.selection.active;
 
-		    console.log(context.globalState.get("currentLine"), context.globalState.get("position"));
-	     	}
-	    }
+				// send data to server
+				async function doPostRequest() {
+					let payload = { text: text, position: position.line + 1 };
+					let res = await axios.post('http://localhost:3000/', payload);
+					let data = res.data;
+					console.log(data);
+				}
+				doPostRequest();
+				currentPosition = editor.selection.active;
+			}
 		}
 	});
 
@@ -52,4 +51,4 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }

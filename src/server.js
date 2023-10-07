@@ -16,13 +16,12 @@ app.listen(port, () => console.log(`Example app listening on port ${port}!`));
 mongoose.connect(process.env.MONGO_KEY);
 
 app.get('/', (req, res) => { 
-    console.log(req.body);
     res.sendFile(__dirname + "/index.html");
 });
 
 // Create a Mongoose Schema for your data
 const dataSchema = new mongoose.Schema({
-    currentLine: String,
+    text: String,
     position: Number,
 });
   
@@ -34,7 +33,7 @@ const Data = mongoose.model('Data', dataSchema);
 app.post('/', async (req, res) => {
   try {
     const newData = new Data({
-        currentLine: req.body.currentLine,
+        text: req.body.text,
         position: req.body.position,
     });
       await newData.save(); // Save the data to the database
@@ -44,9 +43,4 @@ app.post('/', async (req, res) => {
     console.error('Error:', error);
     res.status(500).json({ error: 'Error saving data' });
   }
-});
-
-app.get('/data', (req, res) => {
-    console.log(req.body);
-    res.send('data received');
 });
