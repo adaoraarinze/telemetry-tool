@@ -7,31 +7,51 @@ import axios from 'axios';
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 	let currentPosition = vscode.window.activeTextEditor?.selection.active;
+	let type = "human";
+
 	vscode.workspace.onDidChangeTextDocument(event => {
 		const editor = vscode.window.activeTextEditor;
+		let newText = "";
+		type = "human";
 
-		// check if there is no selection
-		if (editor !== undefined && editor.selection.isEmpty) {
+		async function doPostRequest(content:String, newText:String, position:any, type:String) {
+			let payload = { content: content, newText: newText, position: position.line + 1, type: type };
+			let res = await axios.post('http://localhost:3000/', payload);
+			let data = res.data;
+			console.log(data);
+		}
+
+		if (editor !== undefined) {
 			// get the document text
 			const firstLine = editor.document.lineAt(0);
 			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
 			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-			const text = editor.document.getText(textRange);
-			// the Position object gives you the line and character where the cursor is
-			if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line) {
-				const position = editor.selection.active;
+			const content = editor.document.getText(textRange);
 
-				// send data to server
-				async function doPostRequest() {
-					let payload = { text: text, position: position.line + 1 };
-					let res = await axios.post('http://localhost:3000/', payload);
-					let data = res.data;
-					console.log(data);
-				}
-				doPostRequest();
-				currentPosition = editor.selection.active;
+			vscode.env.clipboard.readText().then((text)=>{
+				let clipboardContent = text; 
+
+			if(event.contentChanges[0].text === clipboardContent){
+				const position = editor.selection.active;
+				newText = event.contentChanges[0].text;
+				type = "pasted";
+				doPostRequest(content, newText, position, type);
 			}
+			if(event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text)) 
+			&& event.contentChanges[0].text !== clipboardContent){
+				const position = editor.selection.active;
+				newText = event.contentChanges[0].text;
+				type = "completion";
+				doPostRequest(content, newText, position, type);
+			}
+			else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line) {
+				const position = editor.selection.active;
+				doPostRequest(content, newText, position, type);
+			}
+			currentPosition = editor.selection.active;
+		});
 		}
+		
 	});
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)

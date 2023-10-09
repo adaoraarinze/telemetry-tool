@@ -21,8 +21,10 @@ app.get('/', (req, res) => {
 
 // Create a Mongoose Schema for your data
 const dataSchema = new mongoose.Schema({
-    text: String,
+    content: String,
+    newText: String,
     position: Number,
+    type: String,
 });
   
 // Create a Mongoose Model based on the Schema
@@ -33,8 +35,10 @@ const Data = mongoose.model('Data', dataSchema);
 app.post('/', async (req, res) => {
   try {
     const newData = new Data({
-        text: req.body.text,
+        content: req.body.content,
         position: req.body.position,
+        type: req.body.type,
+        newText: req.body.newText,
     });
       await newData.save(); // Save the data to the database
       res.json({ message: 'Data saved successfully' });
