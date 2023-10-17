@@ -8,18 +8,51 @@ import axios from 'axios';
 export function activate(context: vscode.ExtensionContext) {
 	let currentPosition = vscode.window.activeTextEditor?.selection.active;
 	let type = "human";
+	let id = vscode.env.machineId;
+	let newText = "";
+
+	async function doPostRequest(content: String, newText: String, position: any, type: String) {
+		let payload = { content: content, newText: newText, position: position.line + 1, type: type, userID: id };
+		let res = await axios.post('http://localhost:3000/', payload);
+		let data = res.data;
+		console.log(data);
+	}
+
+	vscode.debug.onDidChangeBreakpoints(event => {
+		const editor = vscode.window.activeTextEditor;
+		if (editor !== undefined) {
+			const firstLine = editor.document.lineAt(0);
+			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
+			const content = editor.document.getText(textRange);
+			let newText = "";
+
+			event.added.forEach(element => {
+				type = "breakpoint added";
+				const position = editor.selection.active;
+				doPostRequest(content, newText, position, type);
+
+			});
+
+			event.removed.forEach(element => {
+				type = "breakpoint removed";
+				const position = editor.selection.active;
+				doPostRequest(content, newText, position, type);
+
+			});
+
+			event.changed.forEach(element => {
+				type = "breakpoint changed";
+				const position = editor.selection.active;
+				doPostRequest(content, newText, position, type);
+
+			});
+		}
+	});
 
 	vscode.workspace.onDidChangeTextDocument(event => {
 		const editor = vscode.window.activeTextEditor;
-		let newText = "";
 		type = "human";
-
-		async function doPostRequest(content:String, newText:String, position:any, type:String) {
-			let payload = { content: content, newText: newText, position: position.line + 1, type: type };
-			let res = await axios.post('http://localhost:3000/', payload);
-			let data = res.data;
-			console.log(data);
-		}
 
 		if (editor !== undefined) {
 			// get the document text
@@ -28,30 +61,30 @@ export function activate(context: vscode.ExtensionContext) {
 			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
 			const content = editor.document.getText(textRange);
 
-			vscode.env.clipboard.readText().then((text)=>{
-				let clipboardContent = text; 
+			vscode.env.clipboard.readText().then((text) => {
+				let clipboardContent = text;
 
-			if(event.contentChanges[0].text === clipboardContent){
-				const position = editor.selection.active;
-				newText = event.contentChanges[0].text;
-				type = "pasted";
-				doPostRequest(content, newText, position, type);
-			}
-			if(event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text)) 
-			&& event.contentChanges[0].text !== clipboardContent){
-				const position = editor.selection.active;
-				newText = event.contentChanges[0].text;
-				type = "completion";
-				doPostRequest(content, newText, position, type);
-			}
-			else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line) {
-				const position = editor.selection.active;
-				doPostRequest(content, newText, position, type);
-			}
-			currentPosition = editor.selection.active;
-		});
+				if (event.contentChanges[0].text === clipboardContent) {
+					const position = editor.selection.active;
+					newText = event.contentChanges[0].text;
+					type = "pasted";
+					doPostRequest(content, newText, position, type);
+				}
+				if (event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text))
+					&& event.contentChanges[0].text !== clipboardContent) {
+					const position = editor.selection.active;
+					newText = event.contentChanges[0].text;
+					type = "completion";
+					doPostRequest(content, newText, position, type);
+				}
+				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line) {
+					const position = editor.selection.active;
+					doPostRequest(content, newText, position, type);
+				}
+				currentPosition = editor.selection.active;
+			});
 		}
-		
+
 	});
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
