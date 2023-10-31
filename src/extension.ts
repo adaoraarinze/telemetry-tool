@@ -2,6 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import axios from 'axios';
+import { diffLines, diffChars } from 'diff';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -9,14 +10,114 @@ export function activate(context: vscode.ExtensionContext) {
 	let currentPosition = vscode.window.activeTextEditor?.selection.active;
 	let type = "human";
 	let id = vscode.env.machineId;
-	let newText = "";
+	let oldText = "";
 
-	async function doPostRequest(content: String, newText: String, position: any, type: String) {
-		let payload = { content: content, newText: newText, position: position.line + 1, type: type, userID: id };
+	function shuffle(inputID: string) {
+		const characters = inputID.split('');
+		for (let i = characters.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[characters[i], characters[j]] = [characters[j], characters[i]];
+		}
+		const shuffledID = characters.join('');
+
+		return shuffledID;
+	}
+	const anonID = shuffle(id);
+
+
+	async function doPostRequest(linesAdded: any, linesDeleted: any, charactersAdded: any, 
+		charactersDeleted: any, charactersModified: any, position: any, type: String) {
+		let payload = { linesAdded: linesAdded, linesDeleted: linesDeleted, charactersAdded: charactersAdded, 
+			charactersDeleted: charactersDeleted, charactersModified: charactersModified, position: position.line + 1, type: type, userID: anonID };
 		let res = await axios.post('http://localhost:3000/', payload);
 		let data = res.data;
 		console.log(data);
 	}
+
+	function getEdits() {
+		const editor = vscode.window.activeTextEditor;
+		if (editor !== undefined) {
+			const firstLine = editor.document.lineAt(0);
+			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
+			const content = editor.document.getText(textRange);
+
+			const lineDiff = diffLines(oldText, content);
+			const charDiff = diffChars(oldText, content);
+
+			let linesAdded = 0;
+			let linesDeleted = 0;
+			let charactersAdded = 0;
+			let charactersDeleted = 0;
+		  
+			lineDiff.forEach((part) => {
+				if (part.added && ((oldText.match(/\n/g) || []).length !== (content.match(/\n/g) || []).length)) {
+					console.log(part.value);
+					linesAdded += part.count ?? 0;
+				} else if (part.removed && ((oldText.match(/\n/g) || []).length !== (content.match(/\n/g) || []).length)) {
+					linesDeleted += part.count ?? 0;
+				}
+			});
+
+			
+
+			charDiff.forEach((part) => {
+				if (part.added) {
+					charactersAdded += part.count ?? 0;
+				} else if (part.removed) {
+					charactersDeleted += part.count ?? 0;
+				}
+			});
+
+			return {
+			  linesAdded,
+			  linesDeleted,
+			  charactersAdded,
+			  charactersDeleted,
+			  charactersModified: charactersAdded + charactersDeleted,
+			};
+
+		}
+	}
+
+
+	vscode.tasks.onDidStartTask(event => {
+		const editor = vscode.window.activeTextEditor;
+		if (editor !== undefined) {
+			const firstLine = editor.document.lineAt(0);
+			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
+			const content = editor.document.getText(textRange);
+
+			type = `Task started (${event.execution.task.name})`;
+			const position = editor.selection.active;
+
+			const result = getEdits();
+
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+				result?.charactersDeleted, result?.charactersModified, position, type);
+			oldText = content;
+		}
+	});
+
+	vscode.workspace.onDidSaveTextDocument(event => {
+		const editor = vscode.window.activeTextEditor;
+		if (editor !== undefined) {
+			const firstLine = editor.document.lineAt(0);
+			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
+			const content = editor.document.getText(textRange);
+
+			type = "saved file";
+			const position = editor.selection.active;
+
+			const result = getEdits();
+
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+				result?.charactersDeleted, result?.charactersModified, position, type);
+			oldText = content;
+		}
+	});
 
 	vscode.debug.onDidChangeBreakpoints(event => {
 		const editor = vscode.window.activeTextEditor;
@@ -25,27 +126,32 @@ export function activate(context: vscode.ExtensionContext) {
 			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
 			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
 			const content = editor.document.getText(textRange);
-			let newText = "";
 
 			event.added.forEach(element => {
 				type = "breakpoint added";
 				const position = editor.selection.active;
-				doPostRequest(content, newText, position, type);
-
+				const result = getEdits();
+				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+					result?.charactersDeleted, result?.charactersModified, position, type);
+				oldText = content;
 			});
 
 			event.removed.forEach(element => {
 				type = "breakpoint removed";
 				const position = editor.selection.active;
-				doPostRequest(content, newText, position, type);
-
+				const result = getEdits();
+				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+					result?.charactersDeleted, result?.charactersModified, position, type);
+				oldText = content;
 			});
 
 			event.changed.forEach(element => {
 				type = "breakpoint changed";
 				const position = editor.selection.active;
-				doPostRequest(content, newText, position, type);
-
+				const result = getEdits();
+				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+					result?.charactersDeleted, result?.charactersModified, position, type);
+				oldText = content;
 			});
 		}
 	});
@@ -66,20 +172,39 @@ export function activate(context: vscode.ExtensionContext) {
 
 				if (event.contentChanges[0].text === clipboardContent) {
 					const position = editor.selection.active;
-					newText = event.contentChanges[0].text;
 					type = "pasted";
-					doPostRequest(content, newText, position, type);
+
+					const result = getEdits();
+					console.log('Lines Added:', result?.linesAdded);
+					console.log('Lines Deleted:', result?.linesDeleted);
+					console.log('Characters Added:', result?.charactersAdded);
+					console.log('Characters Deleted:', result?.charactersDeleted);
+					console.log('Characters Modified:', result?.charactersModified);
+
+
+					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+						result?.charactersDeleted, result?.charactersModified, position, type);
+					oldText = content;
 				}
 				if (event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text))
 					&& event.contentChanges[0].text !== clipboardContent) {
 					const position = editor.selection.active;
-					newText = event.contentChanges[0].text;
 					type = "completion";
-					doPostRequest(content, newText, position, type);
+
+					const result = getEdits();
+
+					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+						result?.charactersDeleted, result?.charactersModified, position, type);
+					oldText = content;
 				}
-				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line) {
+				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line && type === "human") {
 					const position = editor.selection.active;
-					doPostRequest(content, newText, position, type);
+
+					const result = getEdits();
+
+					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+						result?.charactersDeleted, result?.charactersModified, position, type);
+					oldText = content;
 				}
 				currentPosition = editor.selection.active;
 			});
