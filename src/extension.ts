@@ -21,7 +21,6 @@ export function activate(context: vscode.ExtensionContext) {
 		UUID = newUUID;
     }
 
-
 	async function doPostRequest(linesAdded: any, linesDeleted: any, charactersAdded: any, 
 		charactersDeleted: any, charactersModified: any, position: any, type: String) {
 		const editor = vscode.window.activeTextEditor;
@@ -37,16 +36,6 @@ export function activate(context: vscode.ExtensionContext) {
 		let res = await axios.post('http://localhost:3000/', payload);
 		let data = res.data;
 		console.log(data);
-	}
-
-	function getText(editor: vscode.TextEditor) {
-		if (editor !== undefined) {
-			const firstLine = editor.document.lineAt(0);
-			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
-			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-			const content = editor.document.getText(textRange);
-			return content;
-		}
 	}
 
 	function getEdits() {
@@ -73,8 +62,6 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			});
 
-			
-
 			charDiff.forEach((part) => {
 				if (part.added) {
 					charactersAdded += part.count ?? 0;
@@ -89,139 +76,107 @@ export function activate(context: vscode.ExtensionContext) {
 			  charactersAdded,
 			  charactersDeleted,
 			  charactersModified: charactersAdded + charactersDeleted,
+			  content,
 			};
-
 		}
 	}
 
 	vscode.tasks.onDidStartTask(event => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
-			const firstLine = editor.document.lineAt(0);
-			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
-			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-			const content = editor.document.getText(textRange);
-
 			type = `Task started (${event.execution.task.name})`;
 			const position = editor.selection.active;
-			
 			const result = getEdits();
 
 			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 				result?.charactersDeleted, result?.charactersModified, position, type);
-			oldText = content;
+			oldText = result?.content ?? "";
 		}
 	});
 
 	vscode.tasks.onDidEndTask(event => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
-			const firstLine = editor.document.lineAt(0);
-			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
-			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-			const content = editor.document.getText(textRange);
-
 			type = `Task ended (${event.execution.task.name})`;
 			const position = editor.selection.active;
-
 			const result = getEdits();
 
 			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 				result?.charactersDeleted, result?.charactersModified, position, type);
-			oldText = content;
+			oldText = result?.content ?? "";
 		}
 	});
 
 	vscode.workspace.onDidSaveTextDocument(event => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
-			const firstLine = editor.document.lineAt(0);
-			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
-			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-			const content = editor.document.getText(textRange);
-
 			type = "saved file";
 			const position = editor.selection.active;
-
 			const result = getEdits();
 
 			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 				result?.charactersDeleted, result?.charactersModified, position, type);
-			oldText = content;
+			oldText = result?.content ?? "";
 		}
 	});
 
 	vscode.debug.onDidStartDebugSession(event => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
-			const firstLine = editor.document.lineAt(0);
-			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
-			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-			const content = editor.document.getText(textRange);
-
 			type = "debug session started";
 			const position = editor.selection.active;
-
 			const result = getEdits();
 
 			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 				result?.charactersDeleted, result?.charactersModified, position, type);
-			oldText = content;
+			oldText = result?.content ?? "";
 		}
 	});
 
 	vscode.debug.onDidTerminateDebugSession(event => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
-			const firstLine = editor.document.lineAt(0);
-			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
-			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-			const content = editor.document.getText(textRange);
-
 			type = "debug session ended";
 			const position = editor.selection.active;
-
 			const result = getEdits();
 
 			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 				result?.charactersDeleted, result?.charactersModified, position, type);
-			oldText = content;
+			oldText = result?.content ?? "";
 		}
 	});
 
 	vscode.debug.onDidChangeBreakpoints(event => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
-			const firstLine = editor.document.lineAt(0);
-			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
-			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-			const content = editor.document.getText(textRange);
-
 			event.added.forEach(element => {
 				type = "breakpoint added";
 				const position = editor.selection.active;
 				const result = getEdits();
+
 				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 					result?.charactersDeleted, result?.charactersModified, position, type);
-				oldText = content;
+				oldText = result?.content ?? "";
 			});
 
 			event.removed.forEach(element => {
 				type = "breakpoint removed";
 				const position = editor.selection.active;
 				const result = getEdits();
+
 				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 					result?.charactersDeleted, result?.charactersModified, position, type);
-				oldText = content;
+				oldText = result?.content ?? "";
 			});
 
 			event.changed.forEach(element => {
 				type = "breakpoint changed";
 				const position = editor.selection.active;
 				const result = getEdits();
+
 				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 					result?.charactersDeleted, result?.charactersModified, position, type);
-				oldText = content;
+				oldText = result?.content ?? "";
 			});
 		}
 	});
@@ -231,19 +186,12 @@ export function activate(context: vscode.ExtensionContext) {
 		type = "human";
 
 		if (editor !== undefined) {
-			// get the document text
-			const firstLine = editor.document.lineAt(0);
-			const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
-			const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-			const content = editor.document.getText(textRange);
-
 			vscode.env.clipboard.readText().then((text) => {
 				let clipboardContent = text;
 
 				if (event.contentChanges[0].text === clipboardContent) {
 					const position = editor.selection.active;
 					type = "pasted";
-
 					const result = getEdits();
 					console.log('Lines Added:', result?.linesAdded);
 					console.log('Lines Deleted:', result?.linesDeleted);
@@ -254,27 +202,27 @@ export function activate(context: vscode.ExtensionContext) {
 
 					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 						result?.charactersDeleted, result?.charactersModified, position, type);
-					oldText = content;
+					oldText = result?.content ?? "";
 				}
+
 				if (event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text))
 					&& event.contentChanges[0].text !== clipboardContent) {
 					const position = editor.selection.active;
 					type = "completion";
-
 					const result = getEdits();
 
 					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 						result?.charactersDeleted, result?.charactersModified, position, type);
-					oldText = content;
+					oldText = result?.content ?? "";
 				}
+
 				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line && type === "human") {
 					const position = editor.selection.active;
-
 					const result = getEdits();
 
 					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
 						result?.charactersDeleted, result?.charactersModified, position, type);
-					oldText = content;
+					oldText = result?.content ?? "";
 				}
 				currentPosition = editor.selection.active;
 			});
