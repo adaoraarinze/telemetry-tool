@@ -21,6 +21,7 @@ app.get('/', (req, res) => {
 
 // Create a Mongoose Schema for your data
 const dataSchema = new mongoose.Schema({
+    fileName: String,
     linesAdded: Number,
     linesDeleted: Number,
     charactersAdded: Number,
@@ -39,11 +40,13 @@ const Data = mongoose.model('Data', dataSchema);
 app.post('/', async (req, res) => {
   try {
     const newData = new Data({
+        fileName: req.body.fileName,
         linesAdded: req.body.linesAdded,
         linesDeleted: req.body.linesDeleted,
         charactersAdded: req.body.charactersAdded,
         charactersDeleted: req.body.charactersDeleted,
         charactersModified: req.body.charactersModified,
+        position: req.body.position,
         type: req.body.type,
         userID: req.body.userID
     });
