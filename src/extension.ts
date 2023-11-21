@@ -3,18 +3,29 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 import { diffLines, diffChars } from 'diff';
+import Diff = require('diff');
+import * as parse from 'parse-diff';
 
 const uuidv4 = require('uuid').v4;
 const path = require('path');
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	let fileTimers: { [key: string]: { startTime: number, timeOpen: number } } = {};
-	let lastActiveEditor: vscode.TextEditor | undefined;
+	let currentPosition = vscode.window.activeTextEditor?.selection.active;
+	let type = "human";
+	const editor = vscode.window.activeTextEditor;
+	if (editor !== undefined) {
+		const firstLine = editor.document.lineAt(0);
+		const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+		const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
+		var oldText = editor.document.getText(textRange);
+	}
 
-	// Start a timer for the currently active text editor
-	let activeEditor = vscode.window.activeTextEditor;
+	let UUID = context.globalState.get('extension.uuid') || null;
+	let fileLines: { [key: string]: { lineNumber: number, lineContent: string }[] } = {};
+	let fileTimers: { [key: string]: { startTime: number, timeOpen: number } } = {};
+	let deletedSelections: string[] = [];
+    let activeEditor = vscode.window.activeTextEditor;
+	
 	if (activeEditor) {
 		const filePath = activeEditor.document.uri.fsPath;
 		fileTimers[filePath] = { startTime: Date.now(), timeOpen: 0 };
@@ -55,11 +66,6 @@ export function activate(context: vscode.ExtensionContext) {
 			} 
 		} 
 	}
-
-	let currentPosition = vscode.window.activeTextEditor?.selection.active;
-	let type = "human";
-	let oldText = "";
-	let UUID = context.globalState.get('extension.uuid') || null;
 
 	if (!UUID) {
 		const newUUID = uuidv4();
@@ -237,6 +243,37 @@ export function activate(context: vscode.ExtensionContext) {
 		type = "human";
 
 		if (editor !== undefined) {
+			const filePath = editor.document.uri.fsPath;
+			const content = editor.document.getText();
+			const lines = content.split('\n');
+			fileLines[filePath] = lines.map((lineContent, index) => {
+				return { lineNumber: index + 1, lineContent };
+			});
+
+		console.log(fileLines);
+
+		const oldContent = oldText.split('\n');
+        const newContent = content.split('\n');
+        const diff = Diff.createPatch(filePath, oldContent.join('\n'), newContent.join('\n'));
+        const parsedDiff = parse(diff);
+
+        parsedDiff.forEach((file) => {
+            file.chunks.forEach((chunk) => {
+                chunk.changes.forEach((change) => {
+                    if (change.type === 'del') {	
+						if (event.contentChanges[0].rangeLength > 1 && change.content.slice(1).length > 1 && !(/^\s*$/.test(change.content.slice(1)))) {
+                        	deletedSelections.push(change.content.slice(1));
+                        	if (deletedSelections.length > 25) {
+                            	deletedSelections.shift();
+                        	}
+						}
+                    }
+                });
+            });
+        });
+
+        console.log(deletedSelections, "deletedSelections");
+    
 			vscode.env.clipboard.readText().then((text) => {
 				let clipboardContent = text;
 
