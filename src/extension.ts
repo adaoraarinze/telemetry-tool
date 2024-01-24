@@ -3,39 +3,126 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 import { diffLines, diffChars } from 'diff';
+import Diff = require('diff');
+import * as parse from 'parse-diff';
 
 const uuidv4 = require('uuid').v4;
 const path = require('path');
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 	let currentPosition = vscode.window.activeTextEditor?.selection.active;
 	let type = "human";
-	let oldText = "";
-    let UUID = context.globalState.get('extension.uuid') || null;
+	const editor = vscode.window.activeTextEditor;
+	if (editor !== undefined) {
+		const firstLine = editor.document.lineAt(0);
+		const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+		const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
+		var oldText = editor.document.getText(textRange);
+	}
 
-    if (!UUID) {
-        const newUUID = uuidv4();
-        context.globalState.update('extension.uuid', newUUID);
+	let UUID = context.globalState.get('extension.uuid') || null;
+	let fileLines: { [key: string]: { changeType:string, lineNumber: number, lineContent: string }[] } = {};
+	let fileTimers: { [key: string]: { startTime: number, timeOpen: number } } = {};
+	let thinkingTime: number = 0;
+	let thinkingTimeStart: number = 0;
+	let thinkingTimeString: string = "0h 0m 0s";
+	let isInactive: boolean = false;
+	let timeoutId: NodeJS.Timeout | null = null;
+	let deletedSelections: string[] = [];
+	let activeEditor = vscode.window.activeTextEditor;
+
+	if (activeEditor) {
+		const filePath = activeEditor.document.uri.fsPath;
+		fileTimers[filePath] = { startTime: Date.now(), timeOpen: 0 };
+	}
+
+	vscode.window.onDidChangeActiveTextEditor((editor) => {
+		if (activeEditor) {
+			const filePath = activeEditor.document.uri.fsPath;
+			if (fileTimers[filePath]) {
+				const timeOpen = Date.now() - fileTimers[filePath].startTime;
+				fileTimers[filePath].timeOpen += Math.floor(timeOpen / 1000);
+			}
+		}
+
+		if (editor) {
+			const filePath = editor.document.uri.fsPath;
+			if (!fileTimers[filePath]) {
+				fileTimers[filePath] = { startTime: Date.now(), timeOpen: 0 };
+			} else {
+				fileTimers[filePath].startTime = Date.now();
+			}
+		}
+
+		activeEditor = editor;
+	});
+
+	function checkCurrentFileTimer(fileName: string) {
+		const activeEditor = vscode.window.activeTextEditor;
+		if (activeEditor) {
+			const filePath = activeEditor.document.uri.fsPath;
+			if (fileTimers[filePath]) {
+				const timeOpen = Date.now() - fileTimers[filePath].startTime;
+				const totalOpenTime = fileTimers[filePath].timeOpen + Math.floor(timeOpen / 1000);
+				const seconds = Math.floor(totalOpenTime);
+				const minutes = Math.floor(seconds / 60);
+				const hours = Math.floor(minutes / 60);
+				return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+			}
+		}
+	}
+
+	if (!UUID) {
+		const newUUID = uuidv4();
+		context.globalState.update('extension.uuid', newUUID);
 		UUID = newUUID;
-    }
+	}
 
-	async function doPostRequest(linesAdded: any, linesDeleted: any, charactersAdded: any, 
+	async function doPostRequest(linesAdded: any, linesDeleted: any, charactersAdded: any,
 		charactersDeleted: any, charactersModified: any, position: any, type: String) {
 		const editor = vscode.window.activeTextEditor;
 		let fileName = "";
-        if (editor) {
+		if (editor) {
 			const document = editor.document;
 			const filePath = document.fileName;
 			fileName = path.basename(filePath);
 		}
 
-		let payload = { fileName: fileName, linesAdded: linesAdded, linesDeleted: linesDeleted, charactersAdded: charactersAdded, 
-			charactersDeleted: charactersDeleted, charactersModified: charactersModified, position: position.line + 1, type: type, userID: UUID };
+		const time = checkCurrentFileTimer(fileName);
+
+		// Clear any existing timeout
+		if (timeoutId) {
+			clearTimeout(timeoutId as NodeJS.Timeout);
+			console.log("clear timeout");
+		}
+
+		if (isInactive) {
+			const timeOpen = Date.now() - thinkingTimeStart;
+			thinkingTime += Math.floor(timeOpen / 1000);
+			const seconds = Math.floor(thinkingTime);
+		    const minutes = Math.floor(seconds / 60);
+			const hours = Math.floor(minutes / 60);
+			const tempThinkingTimeString = `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+			thinkingTimeString = tempThinkingTimeString;
+			console.log(thinkingTimeString);
+		}
+
+		timeoutId = setTimeout(() => {
+			thinkingTimeStart = Date.now();
+			isInactive = true;
+			console.log("timeout");
+		}, 5000);
+
+		let payload = {
+			fileName: fileName, linesAdded: linesAdded, linesDeleted: linesDeleted, charactersAdded: charactersAdded,
+			charactersDeleted: charactersDeleted, charactersModified: charactersModified, position: position.line + 1,
+			type: type, time: time, thinkingTime: thinkingTimeString, userID: UUID
+		};
 		let res = await axios.post('http://localhost:3000/', payload);
 		let data = res.data;
 		console.log(data);
+
+		isInactive = false; 
 	}
 
 	function getEdits() {
@@ -53,7 +140,7 @@ export function activate(context: vscode.ExtensionContext) {
 			let linesDeleted = 0;
 			let charactersAdded = 0;
 			let charactersDeleted = 0;
-		  
+
 			lineDiff.forEach((part) => {
 				if (part.added && ((oldText.match(/\n/g) || []).length !== (content.match(/\n/g) || []).length)) {
 					linesAdded += part.count ?? 0;
@@ -71,12 +158,12 @@ export function activate(context: vscode.ExtensionContext) {
 			});
 
 			return {
-			  linesAdded,
-			  linesDeleted,
-			  charactersAdded,
-			  charactersDeleted,
-			  charactersModified: charactersAdded + charactersDeleted,
-			  content,
+				linesAdded,
+				linesDeleted,
+				charactersAdded,
+				charactersDeleted,
+				charactersModified: charactersAdded + charactersDeleted,
+				content,
 			};
 		}
 	}
@@ -88,7 +175,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const position = editor.selection.active;
 			const result = getEdits();
 
-			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 				result?.charactersDeleted, result?.charactersModified, position, type);
 			oldText = result?.content ?? "";
 		}
@@ -101,7 +188,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const position = editor.selection.active;
 			const result = getEdits();
 
-			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 				result?.charactersDeleted, result?.charactersModified, position, type);
 			oldText = result?.content ?? "";
 		}
@@ -114,7 +201,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const position = editor.selection.active;
 			const result = getEdits();
 
-			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 				result?.charactersDeleted, result?.charactersModified, position, type);
 			oldText = result?.content ?? "";
 		}
@@ -127,7 +214,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const position = editor.selection.active;
 			const result = getEdits();
 
-			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 				result?.charactersDeleted, result?.charactersModified, position, type);
 			oldText = result?.content ?? "";
 		}
@@ -140,7 +227,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const position = editor.selection.active;
 			const result = getEdits();
 
-			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 				result?.charactersDeleted, result?.charactersModified, position, type);
 			oldText = result?.content ?? "";
 		}
@@ -154,7 +241,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const position = editor.selection.active;
 				const result = getEdits();
 
-				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 					result?.charactersDeleted, result?.charactersModified, position, type);
 				oldText = result?.content ?? "";
 			});
@@ -164,17 +251,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const position = editor.selection.active;
 				const result = getEdits();
 
-				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
-					result?.charactersDeleted, result?.charactersModified, position, type);
-				oldText = result?.content ?? "";
-			});
-
-			event.changed.forEach(element => {
-				type = "breakpoint changed";
-				const position = editor.selection.active;
-				const result = getEdits();
-
-				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+				doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 					result?.charactersDeleted, result?.charactersModified, position, type);
 				oldText = result?.content ?? "";
 			});
@@ -186,6 +263,37 @@ export function activate(context: vscode.ExtensionContext) {
 		type = "human";
 
 		if (editor !== undefined) {
+			const filePath = editor.document.uri.fsPath;
+			const content = editor.document.getText();
+			const lines = content.split('\n');
+			fileLines[filePath] = lines.map((lineContent, index) => {
+				return { changeType: "", lineNumber: index + 1, lineContent };
+			});
+
+			console.log(fileLines);
+
+			const oldContent = oldText.split('\n');
+			const newContent = content.split('\n');
+			const diff = Diff.createPatch(filePath, oldContent.join('\n'), newContent.join('\n'));
+			const parsedDiff = parse(diff);
+
+			parsedDiff.forEach((file) => {
+				file.chunks.forEach((chunk) => {
+					chunk.changes.forEach((change) => {
+						if (change.type === 'del') {
+							if (event.contentChanges[0].rangeLength > 1 && change.content.slice(1).length > 1 && !(/^\s*$/.test(change.content.slice(1)))) {
+								deletedSelections.push(change.content.slice(1));
+								if (deletedSelections.length > 25) {
+									deletedSelections.shift();
+								}
+							}
+						}
+					});
+				});
+			});
+
+			console.log(deletedSelections, "deletedSelections");
+
 			vscode.env.clipboard.readText().then((text) => {
 				let clipboardContent = text;
 
@@ -193,14 +301,8 @@ export function activate(context: vscode.ExtensionContext) {
 					const position = editor.selection.active;
 					type = "pasted";
 					const result = getEdits();
-					console.log('Lines Added:', result?.linesAdded);
-					console.log('Lines Deleted:', result?.linesDeleted);
-					console.log('Characters Added:', result?.charactersAdded);
-					console.log('Characters Deleted:', result?.charactersDeleted);
-					console.log('Characters Modified:', result?.charactersModified);
 
-
-					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 						result?.charactersDeleted, result?.charactersModified, position, type);
 					oldText = result?.content ?? "";
 				}
@@ -211,7 +313,7 @@ export function activate(context: vscode.ExtensionContext) {
 					type = "completion";
 					const result = getEdits();
 
-					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 						result?.charactersDeleted, result?.charactersModified, position, type);
 					oldText = result?.content ?? "";
 				}
@@ -220,14 +322,19 @@ export function activate(context: vscode.ExtensionContext) {
 					const position = editor.selection.active;
 					const result = getEdits();
 
-					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded, 
+					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 						result?.charactersDeleted, result?.charactersModified, position, type);
 					oldText = result?.content ?? "";
 				}
+
+				fileLines[filePath].forEach(line => {
+					if (line.lineNumber === editor.selection.active.line + 1) {
+						line.changeType = type;
+					}
+				});
 				currentPosition = editor.selection.active;
 			});
 		}
-
 	});
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)

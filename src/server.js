@@ -29,6 +29,8 @@ const dataSchema = new mongoose.Schema({
     charactersModified: Number,
     position: Number,
     type: String,
+    time: String,
+    thinkingTime: String,
     userID: String
 });
   
@@ -48,6 +50,8 @@ app.post('/', async (req, res) => {
         charactersModified: req.body.charactersModified,
         position: req.body.position,
         type: req.body.type,
+        time: req.body.time,
+        thinkingTime: req.body.thinkingTime,
         userID: req.body.userID
     });
       await newData.save(); // Save the data to the database
