@@ -10,7 +10,7 @@ app.use(express.json());
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 
-mongoose.connect("mongodb+srv://vercel-admin-user:8PoFUq14eOkb3lDk@cluster0.nlik0pm.mongodb.net/myFirstDatabase?retryWrites=true&w=majority");
+mongoose.connect(process.env.MONGODB_URI);
 
 app.get('/', (req, res) => { 
     res.sendFile(__dirname + "/index.html");
