@@ -21,7 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	let UUID = context.globalState.get('extension.uuid') || null;
-	let fileLines: { [key: string]: { changeType:string, lineNumber: number, lineContent: string }[] } = {};
+	let fileLines: { [key: string]: { changeType: string, lineNumber: number, lineContent: string }[] } = {};
 	let fileTimers: { [key: string]: { startTime: number, timeOpen: number } } = {};
 	let thinkingTime: number = 0;
 	let thinkingTimeStart: number = 0;
@@ -93,24 +93,21 @@ export function activate(context: vscode.ExtensionContext) {
 		// Clear any existing timeout
 		if (timeoutId) {
 			clearTimeout(timeoutId as NodeJS.Timeout);
-			console.log("clear timeout");
 		}
 
 		if (isInactive) {
 			const timeOpen = Date.now() - thinkingTimeStart;
 			thinkingTime += Math.floor(timeOpen / 1000);
 			const seconds = Math.floor(thinkingTime);
-		    const minutes = Math.floor(seconds / 60);
+			const minutes = Math.floor(seconds / 60);
 			const hours = Math.floor(minutes / 60);
 			const tempThinkingTimeString = `${hours}h ${minutes % 60}m ${seconds % 60}s`;
 			thinkingTimeString = tempThinkingTimeString;
-			console.log(thinkingTimeString);
 		}
 
 		timeoutId = setTimeout(() => {
 			thinkingTimeStart = Date.now();
 			isInactive = true;
-			console.log("timeout");
 		}, 5000);
 
 		let payload = {
@@ -130,7 +127,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		isInactive = false; 
+		isInactive = false;
 	}
 
 	function getEdits() {
@@ -317,13 +314,25 @@ export function activate(context: vscode.ExtensionContext) {
 
 				if (event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text))
 					&& event.contentChanges[0].text !== clipboardContent) {
-					const position = editor.selection.active;
-					type = "completion";
-					const result = getEdits();
+					if (/[\s\.()\[\]{}]/.test(event.contentChanges[0].text)) {
+						const position = editor.selection.active;
+						type = "AI";
+						const result = getEdits();
 
-					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
-						result?.charactersDeleted, result?.charactersModified, position, type);
-					oldText = result?.content ?? "";
+						doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
+							result?.charactersDeleted, result?.charactersModified, position, type);
+						oldText = result?.content ?? "";
+					}
+
+					else {
+						const position = editor.selection.active;
+						type = "completion";
+						const result = getEdits();
+
+						doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
+							result?.charactersDeleted, result?.charactersModified, position, type);
+						oldText = result?.content ?? "";
+					}
 				}
 
 				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line && type === "human") {
