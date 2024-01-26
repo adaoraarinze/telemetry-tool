@@ -10,16 +10,12 @@ app.use(express.json());
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 
-const port = 3000;
-app.listen(port, () => console.log(`Example app listening on port ${port}!`));
-
-mongoose.connect(process.env.MONGO_KEY);
+mongoose.connect("mongodb+srv://vercel-admin-user:8PoFUq14eOkb3lDk@cluster0.nlik0pm.mongodb.net/myFirstDatabase?retryWrites=true&w=majority");
 
 app.get('/', (req, res) => { 
     res.sendFile(__dirname + "/index.html");
 });
 
-// Create a Mongoose Schema for your data
 const dataSchema = new mongoose.Schema({
     fileName: String,
     linesAdded: Number,
@@ -33,13 +29,11 @@ const dataSchema = new mongoose.Schema({
     thinkingTime: String,
     userID: String
 });
-  
-// Create a Mongoose Model based on the Schema
+
 // eslint-disable-next-line @typescript-eslint/naming-convention
 const Data = mongoose.model('Data', dataSchema);
-  
-// API endpoint to receive and store data
-app.post('/', async (req, res) => {
+
+app.post('/api', async (req, res) => {
   try {
     const newData = new Data({
         fileName: req.body.fileName,
@@ -54,11 +48,13 @@ app.post('/', async (req, res) => {
         thinkingTime: req.body.thinkingTime,
         userID: req.body.userID
     });
-      await newData.save(); // Save the data to the database
-      res.json({ message: 'Data saved successfully' });
-    } 
+    await newData.save();
+    res.json({ message: 'Data saved successfully' });
+  } 
   catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Error saving data' });
   }
 });
+
+module.exports = app;

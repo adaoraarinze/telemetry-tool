@@ -118,9 +118,17 @@ export function activate(context: vscode.ExtensionContext) {
 			charactersDeleted: charactersDeleted, charactersModified: charactersModified, position: position.line + 1,
 			type: type, time: time, thinkingTime: thinkingTimeString, userID: UUID
 		};
-		let res = await axios.post('http://localhost:3000/', payload);
-		let data = res.data;
-		console.log(data);
+		try {
+			let res = await axios.post('https://telemetry-tool.vercel.app/api', payload);
+			let data = res.data;
+			console.log(data);
+		} catch (error) {
+			if (error instanceof Error) {
+				console.error('Error:', error.message);
+			} else {
+				console.error('Error:', error);
+			}
+		}
 
 		isInactive = false; 
 	}
