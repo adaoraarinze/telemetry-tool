@@ -5,6 +5,7 @@ import axios from 'axios';
 import { diffLines, diffChars } from 'diff';
 import Diff = require('diff');
 import * as parse from 'parse-diff';
+import * as crypto from 'crypto';
 
 const uuidv4 = require('uuid').v4;
 const path = require('path');
@@ -82,10 +83,12 @@ export function activate(context: vscode.ExtensionContext) {
 		charactersDeleted: any, charactersModified: any, position: any, type: String) {
 		const editor = vscode.window.activeTextEditor;
 		let fileName = "";
+		let hash = "";
 		if (editor) {
 			const document = editor.document;
 			const filePath = document.fileName;
 			fileName = path.basename(filePath);
+			hash = crypto.createHash('sha256').update(fileName).digest('hex');
 		}
 
 		const time = checkCurrentFileTimer(fileName);
@@ -111,7 +114,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}, 5000);
 
 		let payload = {
-			fileName: fileName, linesAdded: linesAdded, linesDeleted: linesDeleted, charactersAdded: charactersAdded,
+			fileName: hash, linesAdded: linesAdded, linesDeleted: linesDeleted, charactersAdded: charactersAdded,
 			charactersDeleted: charactersDeleted, charactersModified: charactersModified, position: position.line + 1,
 			type: type, time: time, thinkingTime: thinkingTimeString, userID: UUID
 		};
@@ -270,10 +273,7 @@ export function activate(context: vscode.ExtensionContext) {
 		if (editor !== undefined) {
 			const filePath = editor.document.uri.fsPath;
 			const content = editor.document.getText();
-			const lines = content.split('\n');
-			fileLines[filePath] = lines.map((lineContent, index) => {
-				return { changeType: "", lineNumber: index + 1, lineContent };
-			});
+
 
 			console.log(fileLines);
 
@@ -301,11 +301,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 			vscode.env.clipboard.readText().then((text) => {
 				let clipboardContent = text;
+				let startLineNumber = 0;
+				let endLineNumber = 0;
 
 				if (event.contentChanges[0].text === clipboardContent) {
 					const position = editor.selection.active;
 					type = "pasted";
 					const result = getEdits();
+
+					startLineNumber = event.contentChanges[0].range.start.line + 1;
+					const numberOfLines = event.contentChanges[0].text.split('\n').length;
+ 					endLineNumber = startLineNumber + numberOfLines - 1;
+
+       				console.log(`Inserted text starts at line ${startLineNumber} and ends at line ${endLineNumber}`);
 
 					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 						result?.charactersDeleted, result?.charactersModified, position, type);
@@ -318,6 +326,12 @@ export function activate(context: vscode.ExtensionContext) {
 						const position = editor.selection.active;
 						type = "AI";
 						const result = getEdits();
+
+					    startLineNumber = event.contentChanges[0].range.start.line + 1;
+						const numberOfLines = event.contentChanges[0].text.split('\n').length;
+ 						endLineNumber = startLineNumber + numberOfLines - 1;
+
+       				    console.log(`Inserted text starts at line ${startLineNumber} and ends at line ${endLineNumber}`);
 
 						doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 							result?.charactersDeleted, result?.charactersModified, position, type);
@@ -344,9 +358,28 @@ export function activate(context: vscode.ExtensionContext) {
 					oldText = result?.content ?? "";
 				}
 
+				const lines = content.split('\n');
+				if (fileLines[filePath] === undefined) {
+					fileLines[filePath] = lines.map((lineContent, index) => {
+						return { changeType: "", lineNumber: index + 1, lineContent };
+					});
+				}
+				else if (fileLines[filePath].length !== lines.length) {
+					fileLines[filePath] = lines.map((lineContent, index) => {
+							const previousChangeType = fileLines[filePath][index]?.changeType || "";
+							return { changeType: previousChangeType, lineNumber: index + 1, lineContent };
+					});
+				}
+
 				fileLines[filePath].forEach(line => {
 					if (line.lineNumber === editor.selection.active.line + 1) {
 						line.changeType = type;
+					}
+
+					if (type === "AI" || type === "pasted") {
+						if (line.lineNumber >= startLineNumber && line.lineNumber <= endLineNumber) {
+							line.changeType = type;
+						}
 					}
 				});
 				currentPosition = editor.selection.active;
