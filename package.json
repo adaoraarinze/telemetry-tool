@@ -16,6 +16,26 @@
       {
         "command": "telemetrytool.telemetrytool",
         "title": "Telemetry Tool"
+      },
+      {
+        "command": "myCustomUndo",
+        "title": "My Custom Undo"
+      },
+      {
+        "command": "myCustomRedo",
+        "title": "My Custom Redo"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "myCustomUndo",
+        "key": "ctrl+z",
+        "mac": "cmd+z"
+      },
+      {
+        "command": "myCustomRedo",
+        "key": "ctrl+y",
+        "mac": "cmd+y"
       }
     ]
   },

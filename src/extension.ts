@@ -29,8 +29,39 @@ export function activate(context: vscode.ExtensionContext) {
 	let thinkingTimeString: string = "0h 0m 0s";
 	let isInactive: boolean = false;
 	let timeoutId: NodeJS.Timeout | null = null;
-	let deletedSelections: string[] = [];
+	let deletedSelections: string[] = []; // get rid of this
 	let activeEditor = vscode.window.activeTextEditor;
+	let isUndoRedo: boolean = false;
+
+	vscode.commands.registerCommand('myCustomUndo', async () => {
+		isUndoRedo = true;
+		const editor = vscode.window.activeTextEditor;
+		if (editor !== undefined) {
+			const position = editor.selection.active;
+			type = "undo";
+			const result = getEdits();
+
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
+				result?.charactersDeleted, result?.charactersModified, position, type);
+			oldText = result?.content ?? "";
+			await vscode.commands.executeCommand('undo');
+		}
+	});
+	
+	vscode.commands.registerCommand('myCustomRedo', async () => {
+		isUndoRedo = true;
+		const editor = vscode.window.activeTextEditor;
+		if (editor !== undefined) {
+			const position = editor.selection.active;
+			type = "redo";
+			const result = getEdits();
+
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
+				result?.charactersDeleted, result?.charactersModified, position, type);
+			oldText = result?.content ?? "";
+			await vscode.commands.executeCommand('redo');
+		}
+	});
 
 	if (activeEditor) {
 		const filePath = activeEditor.document.uri.fsPath;
@@ -282,7 +313,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const diff = Diff.createPatch(filePath, oldContent.join('\n'), newContent.join('\n'));
 			const parsedDiff = parse(diff);
 
-			parsedDiff.forEach((file) => {
+			parsedDiff.forEach((file) => { //get rid of this
 				file.chunks.forEach((chunk) => {
 					chunk.changes.forEach((change) => {
 						if (change.type === 'del') {
@@ -297,14 +328,12 @@ export function activate(context: vscode.ExtensionContext) {
 				});
 			});
 
-			console.log(deletedSelections, "deletedSelections");
-
 			vscode.env.clipboard.readText().then((text) => {
 				let clipboardContent = text;
 				let startLineNumber = 0;
 				let endLineNumber = 0;
 
-				if (event.contentChanges[0].text === clipboardContent) {
+				if (event.contentChanges[0].text === clipboardContent && !isUndoRedo) {
 					const position = editor.selection.active;
 					type = "pasted";
 					const result = getEdits();
@@ -320,7 +349,7 @@ export function activate(context: vscode.ExtensionContext) {
 					oldText = result?.content ?? "";
 				}
 
-				if (event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text))
+				if (event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text) && !isUndoRedo)
 					&& event.contentChanges[0].text !== clipboardContent) {
 					if (/[\s\.()\[\]{}]/.test(event.contentChanges[0].text)) {
 						const position = editor.selection.active;
@@ -349,7 +378,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 
-				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line && type === "human") {
+				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line && type === "human" && !isUndoRedo) {
 					const position = editor.selection.active;
 					const result = getEdits();
 
@@ -383,6 +412,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				});
 				currentPosition = editor.selection.active;
+				isUndoRedo = false;
 			});
 		}
 	});
