@@ -29,7 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
 	let thinkingTimeString: string = "0h 0m 0s";
 	let isInactive: boolean = false;
 	let timeoutId: NodeJS.Timeout | null = null;
-	let deletedSelections: string[] = []; // get rid of this
+	let deletedSelections: string[] = [];
 	let activeEditor = vscode.window.activeTextEditor;
 	let isUndoRedo: boolean = false;
 
@@ -47,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
 			await vscode.commands.executeCommand('undo');
 		}
 	});
-	
+
 	vscode.commands.registerCommand('myCustomRedo', async () => {
 		isUndoRedo = true;
 		const editor = vscode.window.activeTextEditor;
@@ -305,7 +305,6 @@ export function activate(context: vscode.ExtensionContext) {
 			const filePath = editor.document.uri.fsPath;
 			const content = editor.document.getText();
 
-
 			console.log(fileLines);
 
 			const oldContent = oldText.split('\n');
@@ -313,7 +312,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const diff = Diff.createPatch(filePath, oldContent.join('\n'), newContent.join('\n'));
 			const parsedDiff = parse(diff);
 
-			parsedDiff.forEach((file) => { //get rid of this
+			parsedDiff.forEach((file) => {
 				file.chunks.forEach((chunk) => {
 					chunk.changes.forEach((change) => {
 						if (change.type === 'del') {
@@ -333,41 +332,40 @@ export function activate(context: vscode.ExtensionContext) {
 				let startLineNumber = 0;
 				let endLineNumber = 0;
 
-				if (event.contentChanges[0].text === clipboardContent && !isUndoRedo) {
+				if (event.contentChanges[0].text === clipboardContent && clipboardContent !== "" && !isUndoRedo) {
 					const position = editor.selection.active;
 					type = "pasted";
 					const result = getEdits();
 
 					startLineNumber = event.contentChanges[0].range.start.line + 1;
 					const numberOfLines = event.contentChanges[0].text.split('\n').length;
- 					endLineNumber = startLineNumber + numberOfLines - 1;
-
-       				console.log(`Inserted text starts at line ${startLineNumber} and ends at line ${endLineNumber}`);
+					endLineNumber = startLineNumber + numberOfLines - 1;
 
 					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 						result?.charactersDeleted, result?.charactersModified, position, type);
 					oldText = result?.content ?? "";
 				}
 
-				if (event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text) && !isUndoRedo)
-					&& event.contentChanges[0].text !== clipboardContent) {
-					if (/[\s\.()\[\]{}]/.test(event.contentChanges[0].text)) {
+				else if (event.contentChanges[0].text.length > 1
+					&& !(/^\s*$/.test(event.contentChanges[0].text))
+					&& !isUndoRedo && event.contentChanges[0].text !== clipboardContent
+					&& !(/^[()\[\]{}\""\'\.]+$/).test(event.contentChanges[0].text)
+				) {
+					if (/\s/.test(event.contentChanges[0].text)) {
 						const position = editor.selection.active;
 						type = "AI";
 						const result = getEdits();
 
-					    startLineNumber = event.contentChanges[0].range.start.line + 1;
+						startLineNumber = event.contentChanges[0].range.start.line + 1;
 						const numberOfLines = event.contentChanges[0].text.split('\n').length;
- 						endLineNumber = startLineNumber + numberOfLines - 1;
-
-       				    console.log(`Inserted text starts at line ${startLineNumber} and ends at line ${endLineNumber}`);
+						endLineNumber = startLineNumber + numberOfLines - 1;
 
 						doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 							result?.charactersDeleted, result?.charactersModified, position, type);
 						oldText = result?.content ?? "";
 					}
 
-					else {
+					else if(/[()\[\]{}]/.test(event.contentChanges[0].text)) {
 						const position = editor.selection.active;
 						type = "completion";
 						const result = getEdits();
@@ -395,8 +393,8 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 				else if (fileLines[filePath].length !== lines.length) {
 					fileLines[filePath] = lines.map((lineContent, index) => {
-							const previousChangeType = fileLines[filePath][index]?.changeType || "";
-							return { changeType: previousChangeType, lineNumber: index + 1, lineContent };
+						const previousChangeType = fileLines[filePath][index]?.changeType || "";
+						return { changeType: previousChangeType, lineNumber: index + 1, lineContent };
 					});
 				}
 
