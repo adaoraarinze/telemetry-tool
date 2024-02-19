@@ -22,14 +22,13 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	let UUID = context.globalState.get('extension.uuid') || null;
-	let fileLines: { [key: string]: { changeType: string, lineNumber: number, lineContent: string }[] } = {};
+	let fileLines: { [key: string]: { changeType: string, lineNumber: number }[] } = {};
 	let fileTimers: { [key: string]: { startTime: number, timeOpen: number } } = {};
 	let thinkingTime: number = 0;
 	let thinkingTimeStart: number = 0;
 	let thinkingTimeString: string = "0h 0m 0s";
 	let isInactive: boolean = false;
 	let timeoutId: NodeJS.Timeout | null = null;
-	let deletedSelections: string[] = [];
 	let activeEditor = vscode.window.activeTextEditor;
 	let isUndoRedo: boolean = false;
 
@@ -115,12 +114,20 @@ export function activate(context: vscode.ExtensionContext) {
 		const editor = vscode.window.activeTextEditor;
 		let fileName = "";
 		let hash = "";
+		let totalLines = 0;
 		if (editor) {
 			const document = editor.document;
 			const filePath = document.fileName;
-			fileName = path.basename(filePath);
-			hash = crypto.createHash('sha256').update(fileName).digest('hex');
+			fileName = filePath;
+			hash = crypto.createHash('sha256').update(path.basename(filePath)).digest('hex');
+			totalLines = document.lineCount;
 		}
+
+		const lines = Object.entries(fileLines[fileName])
+			.filter(([key, value]) => value.changeType !== "")
+			.map(([key, value]) => value);
+
+		const response = [totalLines, ...Object.values(lines)];
 
 		const time = checkCurrentFileTimer(fileName);
 
@@ -146,8 +153,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 		let payload = {
 			fileName: hash, linesAdded: linesAdded, linesDeleted: linesDeleted, charactersAdded: charactersAdded,
-			charactersDeleted: charactersDeleted, charactersModified: charactersModified, position: position.line + 1,
-			type: type, time: time, thinkingTime: thinkingTimeString, userID: UUID
+			charactersDeleted: charactersDeleted, charactersModified: charactersModified, fileLines: JSON.stringify(response),
+			position: position.line + 1, type: type, time: time, thinkingTime: thinkingTimeString, userID: UUID
 		};
 		try {
 			let res = await axios.post('https://telemetry-tool.vercel.app/api', payload);
@@ -305,28 +312,6 @@ export function activate(context: vscode.ExtensionContext) {
 			const filePath = editor.document.uri.fsPath;
 			const content = editor.document.getText();
 
-			console.log(fileLines);
-
-			const oldContent = oldText.split('\n');
-			const newContent = content.split('\n');
-			const diff = Diff.createPatch(filePath, oldContent.join('\n'), newContent.join('\n'));
-			const parsedDiff = parse(diff);
-
-			parsedDiff.forEach((file) => {
-				file.chunks.forEach((chunk) => {
-					chunk.changes.forEach((change) => {
-						if (change.type === 'del') {
-							if (event.contentChanges[0].rangeLength > 1 && change.content.slice(1).length > 1 && !(/^\s*$/.test(change.content.slice(1)))) {
-								deletedSelections.push(change.content.slice(1));
-								if (deletedSelections.length > 25) {
-									deletedSelections.shift();
-								}
-							}
-						}
-					});
-				});
-			});
-
 			vscode.env.clipboard.readText().then((text) => {
 				let clipboardContent = text;
 				let startLineNumber = 0;
@@ -365,7 +350,7 @@ export function activate(context: vscode.ExtensionContext) {
 						oldText = result?.content ?? "";
 					}
 
-					else if(/[()\[\]{}]/.test(event.contentChanges[0].text)) {
+					else if (/[()\[\]{}]/.test(event.contentChanges[0].text)) {
 						const position = editor.selection.active;
 						type = "completion";
 						const result = getEdits();
@@ -388,22 +373,30 @@ export function activate(context: vscode.ExtensionContext) {
 				const lines = content.split('\n');
 				if (fileLines[filePath] === undefined) {
 					fileLines[filePath] = lines.map((lineContent, index) => {
-						return { changeType: "", lineNumber: index + 1, lineContent };
+						return { changeType: "", lineNumber: index + 1 };
 					});
-				}
-				else if (fileLines[filePath].length !== lines.length) {
-					fileLines[filePath] = lines.map((lineContent, index) => {
-						const previousChangeType = fileLines[filePath][index]?.changeType || "";
-						return { changeType: previousChangeType, lineNumber: index + 1, lineContent };
-					});
+				} else {
+					const diff = lines.length - fileLines[filePath].length;
+					if (diff > 0) {
+						// Lines were added
+						for (let i = 0; i < diff; i++) {
+							const lineNumber = editor.selection.active.line + i + 1;
+							const existingType = fileLines[filePath][lineNumber]?.changeType || "";
+							fileLines[filePath].splice(lineNumber, 0, { changeType: existingType, lineNumber: lineNumber + 1 });
+						}
+					} else if (diff < 0) {
+						// Lines were removed
+						fileLines[filePath].splice(fileLines[filePath].length + diff, -diff);
+					}
+
+					// Update line numbers
+					fileLines[filePath] = fileLines[filePath].map((line, index) => ({ ...line, lineNumber: index + 1 }));
 				}
 
 				fileLines[filePath].forEach(line => {
 					if (line.lineNumber === editor.selection.active.line + 1) {
 						line.changeType = type;
-					}
-
-					if (type === "AI" || type === "pasted") {
+					} else if (type === "AI" || type === "pasted") {
 						if (line.lineNumber >= startLineNumber && line.lineNumber <= endLineNumber) {
 							line.changeType = type;
 						}
