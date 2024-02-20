@@ -5,6 +5,7 @@ import axios from 'axios';
 import { diffLines, diffChars } from 'diff';
 import Diff = require('diff');
 import * as parse from 'parse-diff';
+import * as crypto from 'crypto';
 
 const uuidv4 = require('uuid').v4;
 const path = require('path');
@@ -21,15 +22,45 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	let UUID = context.globalState.get('extension.uuid') || null;
-	let fileLines: { [key: string]: { changeType: string, lineNumber: number, lineContent: string }[] } = {};
+	let fileLines: { [key: string]: { changeType: string, lineNumber: number }[] } = {};
 	let fileTimers: { [key: string]: { startTime: number, timeOpen: number } } = {};
 	let thinkingTime: number = 0;
 	let thinkingTimeStart: number = 0;
 	let thinkingTimeString: string = "0h 0m 0s";
 	let isInactive: boolean = false;
 	let timeoutId: NodeJS.Timeout | null = null;
-	let deletedSelections: string[] = [];
 	let activeEditor = vscode.window.activeTextEditor;
+	let isUndoRedo: boolean = false;
+
+	vscode.commands.registerCommand('myCustomUndo', async () => {
+		isUndoRedo = true;
+		const editor = vscode.window.activeTextEditor;
+		if (editor !== undefined) {
+			const position = editor.selection.active;
+			type = "undo";
+			const result = getEdits();
+
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
+				result?.charactersDeleted, result?.charactersModified, position, type);
+			oldText = result?.content ?? "";
+			await vscode.commands.executeCommand('undo');
+		}
+	});
+
+	vscode.commands.registerCommand('myCustomRedo', async () => {
+		isUndoRedo = true;
+		const editor = vscode.window.activeTextEditor;
+		if (editor !== undefined) {
+			const position = editor.selection.active;
+			type = "redo";
+			const result = getEdits();
+
+			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
+				result?.charactersDeleted, result?.charactersModified, position, type);
+			oldText = result?.content ?? "";
+			await vscode.commands.executeCommand('redo');
+		}
+	});
 
 	if (activeEditor) {
 		const filePath = activeEditor.document.uri.fsPath;
@@ -82,11 +113,21 @@ export function activate(context: vscode.ExtensionContext) {
 		charactersDeleted: any, charactersModified: any, position: any, type: String) {
 		const editor = vscode.window.activeTextEditor;
 		let fileName = "";
+		let hash = "";
+		let totalLines = 0;
 		if (editor) {
 			const document = editor.document;
 			const filePath = document.fileName;
-			fileName = path.basename(filePath);
+			fileName = filePath;
+			hash = crypto.createHash('sha256').update(path.basename(filePath)).digest('hex');
+			totalLines = document.lineCount;
 		}
+
+		const lines = Object.entries(fileLines[fileName])
+			.filter(([key, value]) => value.changeType !== "")
+			.map(([key, value]) => value);
+
+		const response = [totalLines, ...Object.values(lines)];
 
 		const time = checkCurrentFileTimer(fileName);
 
@@ -111,9 +152,9 @@ export function activate(context: vscode.ExtensionContext) {
 		}, 5000);
 
 		let payload = {
-			fileName: fileName, linesAdded: linesAdded, linesDeleted: linesDeleted, charactersAdded: charactersAdded,
-			charactersDeleted: charactersDeleted, charactersModified: charactersModified, position: position.line + 1,
-			type: type, time: time, thinkingTime: thinkingTimeString, userID: UUID
+			fileName: hash, linesAdded: linesAdded, linesDeleted: linesDeleted, charactersAdded: charactersAdded,
+			charactersDeleted: charactersDeleted, charactersModified: charactersModified, fileLines: JSON.stringify(response),
+			position: position.line + 1, type: type, time: time, thinkingTime: thinkingTimeString, userID: UUID
 		};
 		try {
 			let res = await axios.post('https://telemetry-tool.vercel.app/api', payload);
@@ -270,61 +311,46 @@ export function activate(context: vscode.ExtensionContext) {
 		if (editor !== undefined) {
 			const filePath = editor.document.uri.fsPath;
 			const content = editor.document.getText();
-			const lines = content.split('\n');
-			fileLines[filePath] = lines.map((lineContent, index) => {
-				return { changeType: "", lineNumber: index + 1, lineContent };
-			});
-
-			console.log(fileLines);
-
-			const oldContent = oldText.split('\n');
-			const newContent = content.split('\n');
-			const diff = Diff.createPatch(filePath, oldContent.join('\n'), newContent.join('\n'));
-			const parsedDiff = parse(diff);
-
-			parsedDiff.forEach((file) => {
-				file.chunks.forEach((chunk) => {
-					chunk.changes.forEach((change) => {
-						if (change.type === 'del') {
-							if (event.contentChanges[0].rangeLength > 1 && change.content.slice(1).length > 1 && !(/^\s*$/.test(change.content.slice(1)))) {
-								deletedSelections.push(change.content.slice(1));
-								if (deletedSelections.length > 25) {
-									deletedSelections.shift();
-								}
-							}
-						}
-					});
-				});
-			});
-
-			console.log(deletedSelections, "deletedSelections");
 
 			vscode.env.clipboard.readText().then((text) => {
 				let clipboardContent = text;
+				let startLineNumber = 0;
+				let endLineNumber = 0;
 
-				if (event.contentChanges[0].text === clipboardContent) {
+				if (event.contentChanges[0].text === clipboardContent && clipboardContent !== "" && !isUndoRedo) {
 					const position = editor.selection.active;
 					type = "pasted";
 					const result = getEdits();
+
+					startLineNumber = event.contentChanges[0].range.start.line + 1;
+					const numberOfLines = event.contentChanges[0].text.split('\n').length;
+					endLineNumber = startLineNumber + numberOfLines - 1;
 
 					doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 						result?.charactersDeleted, result?.charactersModified, position, type);
 					oldText = result?.content ?? "";
 				}
 
-				if (event.contentChanges[0].text.length > 2 && !(/^\s*$/.test(event.contentChanges[0].text))
-					&& event.contentChanges[0].text !== clipboardContent) {
-					if (/[\s\.()\[\]{}]/.test(event.contentChanges[0].text)) {
+				else if (event.contentChanges[0].text.length > 1
+					&& !(/^\s*$/.test(event.contentChanges[0].text))
+					&& !isUndoRedo && event.contentChanges[0].text !== clipboardContent
+					&& !(/^[()\[\]{}\""\'\.]+$/).test(event.contentChanges[0].text)
+				) {
+					if (/\s/.test(event.contentChanges[0].text)) {
 						const position = editor.selection.active;
 						type = "AI";
 						const result = getEdits();
+
+						startLineNumber = event.contentChanges[0].range.start.line + 1;
+						const numberOfLines = event.contentChanges[0].text.split('\n').length;
+						endLineNumber = startLineNumber + numberOfLines - 1;
 
 						doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 							result?.charactersDeleted, result?.charactersModified, position, type);
 						oldText = result?.content ?? "";
 					}
 
-					else {
+					else if (/[()\[\]{}]/.test(event.contentChanges[0].text)) {
 						const position = editor.selection.active;
 						type = "completion";
 						const result = getEdits();
@@ -335,7 +361,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 
-				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line && type === "human") {
+				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line && type === "human" && !isUndoRedo) {
 					const position = editor.selection.active;
 					const result = getEdits();
 
@@ -344,12 +370,40 @@ export function activate(context: vscode.ExtensionContext) {
 					oldText = result?.content ?? "";
 				}
 
+				const lines = content.split('\n');
+				if (fileLines[filePath] === undefined) {
+					fileLines[filePath] = lines.map((lineContent, index) => {
+						return { changeType: "", lineNumber: index + 1 };
+					});
+				} else {
+					const diff = lines.length - fileLines[filePath].length;
+					if (diff > 0) {
+						// Lines were added
+						for (let i = 0; i < diff; i++) {
+							const lineNumber = editor.selection.active.line + i + 1;
+							const existingType = fileLines[filePath][lineNumber]?.changeType || "";
+							fileLines[filePath].splice(lineNumber, 0, { changeType: existingType, lineNumber: lineNumber + 1 });
+						}
+					} else if (diff < 0) {
+						// Lines were removed
+						fileLines[filePath].splice(fileLines[filePath].length + diff, -diff);
+					}
+
+					// Update line numbers
+					fileLines[filePath] = fileLines[filePath].map((line, index) => ({ ...line, lineNumber: index + 1 }));
+				}
+
 				fileLines[filePath].forEach(line => {
 					if (line.lineNumber === editor.selection.active.line + 1) {
 						line.changeType = type;
+					} else if (type === "AI" || type === "pasted") {
+						if (line.lineNumber >= startLineNumber && line.lineNumber <= endLineNumber) {
+							line.changeType = type;
+						}
 					}
 				});
 				currentPosition = editor.selection.active;
+				isUndoRedo = false;
 			});
 		}
 	});
