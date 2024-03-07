@@ -12,7 +12,7 @@ const path = require('path');
 
 export function activate(context: vscode.ExtensionContext) {
 	let currentPosition = vscode.window.activeTextEditor?.selection.active;
-	let type = "human";
+	let type = "manually generated";
 	const editor = vscode.window.activeTextEditor;
 	if (editor !== undefined) {
 		const firstLine = editor.document.lineAt(0);
@@ -306,7 +306,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	vscode.workspace.onDidChangeTextDocument(event => {
 		const editor = vscode.window.activeTextEditor;
-		type = "human";
+		type = "manually generated";
 
 		if (editor !== undefined) {
 			const filePath = editor.document.uri.fsPath;
@@ -338,7 +338,7 @@ export function activate(context: vscode.ExtensionContext) {
 				) {
 					if (/\s/.test(event.contentChanges[0].text)) {
 						const position = editor.selection.active;
-						type = "AI";
+						type = "auto generated";
 						const result = getEdits();
 
 						startLineNumber = event.contentChanges[0].range.start.line + 1;
@@ -361,7 +361,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 
-				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line && type === "human" && !isUndoRedo) {
+				else if (currentPosition !== undefined && currentPosition.line !== editor.selection.active.line && type === "manually generated" && !isUndoRedo) {
 					const position = editor.selection.active;
 					const result = getEdits();
 
@@ -396,7 +396,7 @@ export function activate(context: vscode.ExtensionContext) {
 				fileLines[filePath].forEach(line => {
 					if (line.lineNumber === editor.selection.active.line + 1) {
 						line.changeType = type;
-					} else if (type === "AI" || type === "pasted") {
+					} else if (type === "auto generated" || type === "pasted") {
 						if (line.lineNumber >= startLineNumber && line.lineNumber <= endLineNumber) {
 							line.changeType = type;
 						}
