@@ -36,6 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
 		isUndoRedo = true;
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
+			await vscode.commands.executeCommand('undo');
 			const position = editor.selection.active;
 			type = "undo";
 			const result = getEdits();
@@ -43,7 +44,6 @@ export function activate(context: vscode.ExtensionContext) {
 			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 				result?.charactersDeleted, result?.charactersModified, position, type);
 			oldText = result?.content ?? "";
-			await vscode.commands.executeCommand('undo');
 		}
 	});
 
@@ -51,6 +51,7 @@ export function activate(context: vscode.ExtensionContext) {
 		isUndoRedo = true;
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
+			await vscode.commands.executeCommand('redo');
 			const position = editor.selection.active;
 			type = "redo";
 			const result = getEdits();
@@ -58,7 +59,6 @@ export function activate(context: vscode.ExtensionContext) {
 			doPostRequest(result?.linesAdded, result?.linesDeleted, result?.charactersAdded,
 				result?.charactersDeleted, result?.charactersModified, position, type);
 			oldText = result?.content ?? "";
-			await vscode.commands.executeCommand('redo');
 		}
 	});
 
@@ -214,7 +214,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
-	vscode.tasks.onDidStartTask(event => {
+	vscode.tasks.onDidStartTaskProcess(event => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
 			type = `Task started (${event.execution.task.name})`;
@@ -227,10 +227,13 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	vscode.tasks.onDidEndTask(event => {
+	vscode.tasks.onDidEndTaskProcess(event => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor !== undefined) {
-			type = `Task ended (${event.execution.task.name})`;
+			type = `Task ended successfully (${event.execution.task.name})`;
+			if (event.exitCode !== 0) {
+				type = `Task failed (${event.execution.task.name})`;
+			}
 			const position = editor.selection.active;
 			const result = getEdits();
 
