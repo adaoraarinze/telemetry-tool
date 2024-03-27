@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
 	let isInactive: boolean = false;
 	let timeoutId: NodeJS.Timeout | null = null;
 	let activeEditor = vscode.window.activeTextEditor;
-	let previousEditor = vscode.window.activeTextEditor;
+	let previousFilename = vscode.window.activeTextEditor?.document.fileName || "";
 	let isUndoRedo: boolean = false;
 
 	vscode.commands.registerCommand('myCustomUndo', async () => {
@@ -131,6 +131,11 @@ export function activate(context: vscode.ExtensionContext) {
 		const response = [totalLines, ...Object.values(lines)];
 
 		const time = checkCurrentFileTimer(fileName);
+
+		if (previousFilename !== fileName) {
+			previousFilename = fileName;
+			return;
+		}
 
 		// Clear any existing timeout
 		if (timeoutId) {
@@ -312,7 +317,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const editor = vscode.window.activeTextEditor;
 		type = "manually generated";
 
-		if (editor !== undefined && previousEditor === editor) {
+		if (editor !== undefined) {
 			const filePath = editor.document.uri.fsPath;
 			const content = editor.document.getText();
 
@@ -410,7 +415,6 @@ export function activate(context: vscode.ExtensionContext) {
 				isUndoRedo = false;
 			});
 		}
-		previousEditor = editor;
 	});
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
